@@ -35,6 +35,9 @@ spec:
         {{- include "utils.linkerd.pod_and_service_annotation" $ | indent 8 }}
         config.linkerd.io/skip-inbound-ports: "22,53,80,443"
         config.linkerd.io/skip-outbound-ports: "22,53,80,443"
+        prometheus.io/scrape: "true"
+        prometheus.io/targets: {{ required "$.Values.alerts.prometheus missing" $.Values.alerts.prometheus | quote }}
+        prometheus.io/metrics-prefix: "openstack_network_agent_"
       labels:
         name: neutron-network-agent-{{ $az }}
 {{ tuple $ "neutron" "agent" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 8 }}
@@ -148,7 +151,28 @@ spec:
               mountPath: /dev/log
               readOnly: false
             {{- include "utils.trust_bundle.volume_mount" $ | indent 12 }}
-{{- if $.Values.agent.neutron_l3 | default false }}
+        - name: agent-check-exporter
+          image: keppel.eu-de-1.cloud.sap/ccloud/neutron-network-agent-checks:{{ $.Values.imageVersionAgentExporter | required "Please set neutron.imageVersionAgentExporter "}}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: METRIC_PREFIX
+              value: openstack_neutron_agent_check
+          ports:
+            - name: metrics-export
+              containerPort: 9116
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9116
+            initialDelaySeconds: 15
+            timeoutSeconds: 5
+            periodSeconds: 60
+          resources:
+{{ toYaml $.Values.pod.resources.agent_checks_exporter | indent 12 }}
+          volumeMounts:
+            - name: network-namespace
+              mountPath: /var/run/netns
+  {{- if $.Values.agent.neutron_l3 | default false }}
         - name: neutron-l3-agent
           image: {{$.Values.global.registry}}/loci-neutron:{{$.Values.imageVersionNetworkAgentL3 | default $.Values.imageVersionNetworkAgent | default $.Values.imageVersion | required "Please set neutron.imageVersionNetworkAgentL3 or similar"}}
           imagePullPolicy: IfNotPresent
@@ -232,6 +256,8 @@ spec:
           resources:
 {{ toYaml $.Values.pod.resources.linuxbridge_agent | indent 12 }}
           volumeMounts:
+            - name: network-namespace
+              mountPath: /var/run/netns
             - mountPath: /lib/modules
               name: modules
               readOnly: true
@@ -264,6 +290,8 @@ spec:
               readOnly: true
             {{- include "utils.trust_bundle.volume_mount" $ | indent 12 }}
       volumes:
+        - name: network-namespace
+          emptyDir: {}
         - name: metadata-proxy
           hostPath:
             path: /run/metadata-proxy
