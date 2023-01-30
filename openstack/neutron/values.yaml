@@ -202,6 +202,7 @@ imageNameNetworkAgentDHCPInit: alpine
 imageVersionRedis: 7.0.0-alpine
 imageVersionLogstash: 8.15.1
 imageVersionNetworkAgentDHCPInit: 3.8
+imageVersionAgentExporter: '20260716114552'
 
 api:
   processes: 8
